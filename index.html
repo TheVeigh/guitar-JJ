@@ -1,0 +1,283 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Mini Guitar Hero</title>
+  <style>
+    body {
+      margin: 0;
+      background: #111;
+      color: white;
+      font-family: Arial, sans-serif;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+    }
+    h1 {
+      margin: 10px;
+    }
+    #game {
+      position: relative;
+      width: 400px;
+      height: 600px;
+      background: #222;
+      border: 3px solid #555;
+      overflow: hidden;
+      display: flex;
+      justify-content: space-between;
+    }
+    .lane {
+      width: 25%;
+      height: 100%;
+      border-left: 1px solid #333;
+      border-right: 1px solid #333;
+      position: relative;
+    }
+    .note {
+      width: 100%;
+      height: 40px;
+      position: absolute;
+      top: 0;
+      border-radius: 5px;
+    }
+    .a { background: red; }
+    .s { background: yellow; }
+    .d { background: green; }
+    .f { background: blue; }
+
+    #hit-line {
+      position: absolute;
+      bottom: 100px;
+      width: 100%;
+      height: 5px;
+      background: white;
+      opacity: 0.3;
+    }
+
+    #scoreboard {
+      margin: 10px;
+      font-size: 18px;
+      display: flex;
+      gap: 20px;
+    }
+
+    .flash {
+      animation: flash 0.2s;
+    }
+    @keyframes flash {
+      from { background: white; }
+      to { background: #222; }
+    }
+  </style>
+</head>
+<body>
+  <h1>Mini Guitar Hero</h1>
+  <div id="scoreboard">
+    Pontos: <span id="score">0</span> |
+    Vidas: <span id="lives">3</span>
+  </div>
+  <button id="restart-btn" style="margin-bottom:10px;display:none;">Reiniciar</button>
+  <button id="pause-btn" style="margin-bottom:10px;">Pause</button>
+  <div id="audio-warning" style="color:yellow; margin-bottom:10px;">Clique em qualquer lugar para iniciar a música!</div>
+  <div id="game">
+    <div class="lane" data-key="a"></div>
+    <div class="lane" data-key="s"></div>
+    <div class="lane" data-key="d"></div>
+    <div class="lane" data-key="f"></div>
+    <div id="hit-line"></div>
+  </div>
+
+  <audio id="bgm" src="/KISS.mp3" loop></audio>
+
+
+  <script>
+    
+    const lanes = {
+      a: document.querySelector('.lane[data-key="a"]'),
+      s: document.querySelector('.lane[data-key="s"]'),
+      d: document.querySelector('.lane[data-key="d"]'),
+      f: document.querySelector('.lane[data-key="f"]')
+    };
+
+    const scoreEl = document.getElementById('score');
+    const livesEl = document.getElementById('lives');
+    const bgm = document.getElementById('bgm');
+    const hitSound = document.getElementById('hit-sound');
+
+    const keys = ['a', 's', 'd', 'f'];
+    const gameHeight = 600;
+    const hitZone = 500;
+    const hitMargin = 60;
+    const maxLives = 5;
+
+  let score = 0;
+  let lives = 3;
+  let moveInterval, gameLoopId;
+  let noteIndex = 0;
+  let chart = [];
+  let gameStarted = false;
+  let paused = false;
+
+    function generateChart() {
+      chart = [];
+      const bpm = 120;
+      const interval = 60 / bpm;
+      for (let i = 0; i < 100; i++) {
+        const time = i * interval;
+        const key = keys[Math.floor(Math.random() * keys.length)];
+        chart.push({ time, key });
+      }
+    }
+
+    function spawnNote(key) {
+      const note = document.createElement('div');
+      note.classList.add('note', key);
+      note.dataset.key = key;
+      note.style.top = '-40px';
+      lanes[key].appendChild(note);
+    }
+
+    let gameOver = false;
+    function moveNotes() {
+      if (gameOver || paused) return;
+      document.querySelectorAll('.note').forEach(note => {
+        let top = parseFloat(note.style.top);
+        if (isNaN(top)) top = 0;
+        top += 4;
+        note.style.top = top + 'px';
+
+        if (top > gameHeight) {
+          note.remove();
+          handleMistake(); // errou ao deixar passar
+        }
+      });
+    }
+
+    function handleKeyPress(e) {
+      if (gameOver || paused) return;
+      const key = e.key.toLowerCase();
+      if (!keys.includes(key)) return;
+
+      const lane = lanes[key];
+      const notes = lane.querySelectorAll('.note');
+
+      let bestNote = null;
+      let bestDistance = Infinity;
+
+      for (let note of notes) {
+        const noteTop = parseFloat(note.style.top);
+        const distance = Math.abs(noteTop - hitZone);
+        if (distance <= hitMargin && distance < bestDistance) {
+          bestNote = note;
+          bestDistance = distance;
+        }
+      }
+
+      if (bestNote) {
+        bestNote.remove();
+        score++;
+        if (lives < maxLives) lives++;
+        flashLane(lane);
+        playHitSound();
+        updateHUD();
+      } else {
+        handleMistake(); // errou ao apertar fora da hora
+      }
+    }
+    // Corrigir: adicionar o eventListener do botão de pause fora de qualquer função
+    document.getElementById('pause-btn').addEventListener('click', () => {
+      paused = !paused;
+      const pauseBtn = document.getElementById('pause-btn');
+      if (paused) {
+        bgm.pause();
+        pauseBtn.textContent = 'Continuar';
+      } else {
+        bgm.play();
+        pauseBtn.textContent = 'Pause';
+      }
+    });
+    function handleMistake() {
+      lives--;
+      updateHUD();
+      if (lives <= 0) {
+        gameOver = true;
+        restartGame();
+      }
+    }
+
+    function flashLane(lane) {
+      lane.classList.add('flash');
+      setTimeout(() => lane.classList.remove('flash'), 100);
+    }
+
+    function playHitSound() {
+      hitSound.currentTime = 0;
+      hitSound.play();
+    }
+
+    function updateHUD() {
+      scoreEl.textContent = score;
+      livesEl.textContent = lives;
+    }
+
+    function clearNotes() {
+      document.querySelectorAll('.note').forEach(note => note.remove());
+    }
+
+    function restartGame() {
+      clearInterval(moveInterval);
+      cancelAnimationFrame(gameLoopId);
+      window.removeEventListener('keydown', handleKeyPress);
+      bgm.pause();
+      bgm.currentTime = 0;
+      document.getElementById('restart-btn').style.display = 'inline-block';
+      gameStarted = false;
+    }
+
+    function startGame() {
+      gameStarted = true;
+      // Resetar estado
+      score = 0;
+      lives = 3;
+      noteIndex = 0;
+      gameOver = false;
+      clearNotes();
+      updateHUD();
+      generateChart();
+      bgm.volume = 0.4;
+      bgm.play().catch(() => console.log("Clique para ativar som"));
+
+      const startTime = Date.now() / 1000;
+
+      moveInterval = setInterval(moveNotes, 20);
+
+      function gameLoop() {
+        if (gameOver) return;
+        const currentTime = (Date.now() / 1000) - startTime;
+        while (noteIndex < chart.length && chart[noteIndex].time <= currentTime) {
+          spawnNote(chart[noteIndex].key);
+          noteIndex++;
+        }
+        gameLoopId = requestAnimationFrame(gameLoop);
+      }
+
+      requestAnimationFrame(gameLoop);
+      window.addEventListener('keydown', handleKeyPress);
+      document.getElementById('restart-btn').style.display = 'none';
+    }
+
+    window.addEventListener('click', () => {
+      if (!gameStarted && bgm.paused) {
+        startGame();
+        document.getElementById('audio-warning').style.display = 'none';
+        gameStarted = true;
+      }
+    });
+
+    document.getElementById('restart-btn').addEventListener('click', () => {
+      startGame();
+    });
+  </script>
+</body>
+</html>
